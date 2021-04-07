@@ -1,11 +1,13 @@
-import file_server
+import socket
+
+import server
 import hashlib
 import io
 import secrets
 import logging
 import config
 
-from error import NewFileException
+from exceptions import NewFileException
 
 logger = logging.getLogger(__name__)
 _hash_algorithm = {
@@ -17,6 +19,24 @@ _hash_algorithm = {
     "BLAKE2B": hashlib.blake2b(digest_size=32),
     "BLAKE2S": hashlib.blake2s(digest_size=32)
 }
+
+
+def message_hmac(message, algorithm, key):
+    return "mock"
+
+
+def tcpip_client(server_socket, algorithm, key):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_addr = ('localhost', server_socket)
+    client_socket.connect(server_addr)
+    print("INFO: Login client up and connected to login server.")
+    message = input("Please submit the message you want to send:")
+    m_hmac = message_hmac(message, algorithm, key)
+    try:
+        client_socket.sendall(bytes(message+","+m_hmac, 'utf-8'))
+    finally:
+        print('INFO: Closing connection.')
+        client_socket.close()
 
 
 def generate_token():
@@ -68,11 +88,11 @@ def check_file_integrity(filepath):
     token = generate_token()
     file_hash = hash_file(filepath)
     challenge_value = challenge(token, file_hash)
-    mac_file = file_server.mac_function(file_hash, challenge_value)
+    mac_file = server.mac_function(file_hash, challenge_value)
     failed_reason = 'none'
 
     try:
-        file_hash_server, mac_file_server, verification_hash = file_server.verify_integrity(filepath, file_hash, token)
+        file_hash_server, mac_file_server, verification_hash = server.verify_integrity(filepath, file_hash, token)
         if verification_hash and not mac_file == mac_file_server:
             logger.warning(
                 "The file %s is corrupted: the MAC obtained by the client is not the same as the one obtained by the server.",

@@ -1,12 +1,13 @@
 import time
 import client, reports
-import file_server
+import server
 import os
 import shutil
 import schedule
 import config
-from error import ApplicationError
+from exceptions import ApplicationError
 from datetime import datetime
+from multiprocessing import Process
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,14 +16,14 @@ logging.basicConfig(format='%(levelname)s %(asctime)s - %(message)s', level='INF
 
 def initial_store(c):
     for d in c.directories:
-        file_server.store_files(d)
+        server.store_files(d)
 
 
 def periodical_check():
     logger.info("Periodical check started")
     tic = time.perf_counter()
     c = config.Config()
-    file_server.register_analysis_time()
+    server.register_analysis_time()
     entries = []
     for d in c.directories:
         for root, dirs, filenames in os.walk(d):
@@ -30,13 +31,14 @@ def periodical_check():
                 full_path = os.path.join(root, filename)
                 filepath, file_hash_server, verification_hash, failed_reason = client.check_file_integrity(full_path)
                 entries.append(
-                    [datetime.now().strftime('%d/%m/%Y %H:%M:%S'), filepath, file_hash_server, verification_hash, failed_reason])
+                    [datetime.now().strftime('%d/%m/%Y %H:%M:%S'), filepath, file_hash_server, verification_hash,
+                     failed_reason])
 
-    files_deleted = file_server.check_deleted_files()
+    files_deleted = server.check_deleted_files()
     reports.create_logs(tuple(entries), files_deleted)
     tac = time.perf_counter()
     logger.info("Periodical check finished")
-    logger.debug(f"Time elapsed: {tac-tic:0.4f} seconds")
+    logger.debug(f"Time elapsed: {tac - tic:0.4f} seconds")
 
 
 def configuration():
@@ -76,8 +78,6 @@ if __name__ == "__main__":
     print("#                                           #")
     print("#############################################")
 
-    configuration()
-
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    p = Process(target=server.tcpip_server, args=(7070, "test", "test"))
+    p.start()
+    client.tcpip_client(7070, "test", "test")

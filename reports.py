@@ -7,7 +7,6 @@ import shutil
 import time
 import config
 
-import email_module
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +67,6 @@ def update_stats(rows, files_deleted):
             writer.writerows(failed_files)
 
     logger.info("The stats.csv and failed_checks.csv files have been updated")
-
-    if len(failed_files) > 0:
-        email_module.send_alert_email(failed_files)
 
 
 def create_logs(rows, files_deleted):
@@ -146,9 +142,8 @@ def create_report():
             row += 1
 
         workbook.close()
-        email_module.send_report_email(pathname)
 
-        logger.info("The report was created in the 'Reports' folder and the email was sent")
+        logger.info("The report was created in the 'Reports' folder")
 
         shutil.move(pathname, filename)
         tic = time.perf_counter()

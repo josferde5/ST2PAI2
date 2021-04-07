@@ -1,8 +1,9 @@
 import hashlib
 import hmac
 import os
+import socket
 
-from error import NewFileException
+from exceptions import NewFileException
 from datetime import datetime as dt
 import client
 import logging
@@ -20,6 +21,36 @@ _hash_algorithm = {
     "BLAKE2S": hashlib.blake2s
 }
 datetime = None
+
+
+def tcpip_server(s_socket, algoritm, key):
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_addr = ('localhost', s_socket)
+    server_socket.bind(server_addr)
+    server_socket.listen(1)
+    print('INFO: Login server up, waiting for a connection.')
+
+    while True:
+        connection, client_address = server_socket.accept()
+        try:
+            print('INFO: received connection from', client_address)
+            client_message = bytes("", 'utf-8')
+            while True:
+                data = connection.recv(16)
+                if data:
+                    client_message += data
+                else:
+                    break
+            received_info = str(client_message, 'utf-8')
+            print("INFO: Received from client: " + received_info)
+            decoded = received_info.split(',')
+            if decoded[1] == client.message_hmac(client_message, algoritm, key):
+                print("INFO: Correct message integrity.")
+            else:
+                print("WARN: Integrity void, message modified or treated.")
+        finally:
+            print("INFO: Closing server.")
+            connection.close()
 
 
 def register_analysis_time():
