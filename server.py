@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import os
 import socket
+import random
 
 from exceptions import NewFileException
 from datetime import datetime as dt
@@ -20,37 +21,63 @@ _hash_algorithm = {
     "BLAKE2B": hashlib.blake2b,
     "BLAKE2S": hashlib.blake2s
 }
-datetime = None
+buffer_size = 16384
 
 
-def tcpip_server(s_socket, algoritm, key):
+def message_hmac(message, algorithm, key):
+    return "mock"
+
+
+def key_agreement(server_socket, received_info, algorithm):
+    data = received_info.split(',')
+    w = random.randint(1, int(data[1])-1)
+    dh = pow(int(data[3]), w, int(data[1]))
+    b = pow(int(data[2]), w, int(data[1]))
+    mac_b = message_hmac(data[3], algorithm, str(dh))
+    server_socket.sendall(bytes(f'{str(b)},{str(mac_b)}', 'utf-8'))
+
+    data = server_socket.recv(buffer_size)
+    received_info = str(data, 'utf-8')
+
+    mac_a = message_hmac(received_info, algorithm, str(dh))
+    if not mac_a == received_info:
+        pass
+    else:
+        key_hex = format(dh, 'x')
+        print(f"INFO: the key is {key_hex}")
+        return key_hex
+
+
+def tcpip_server(s_socket, algorithm, key):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_addr = ('localhost', s_socket)
-    server_socket.bind(server_addr)
-    server_socket.listen(1)
-    print('INFO: Login server up, waiting for a connection.')
-
-    while True:
+    with server_socket:
+        server_addr = ('localhost', s_socket)
+        server_socket.bind(server_addr)
+        server_socket.listen(1)
+        print('INFO: Login server up, waiting for a connection.')
         connection, client_address = server_socket.accept()
-        try:
-            print('INFO: received connection from', client_address)
-            client_message = bytes("", 'utf-8')
+        print('INFO: received connection from', client_address)
+        with connection:
             while True:
-                data = connection.recv(16)
-                if data:
-                    client_message += data
-                else:
+                data = connection.recv(buffer_size)
+                if not data:
+                    continue
+
+                received_info = str(data, 'utf-8')
+
+                if received_info == 'END':
                     break
-            received_info = str(client_message, 'utf-8')
-            print("INFO: Received from client: " + received_info)
-            decoded = received_info.split(',')
-            if decoded[1] == client.message_hmac(client_message, algoritm, key):
-                print("INFO: Correct message integrity.")
-            else:
-                print("WARN: Integrity void, message modified or treated.")
-        finally:
+                elif received_info.startswith('KEYAGREEMENT'):
+                    print(f"INFO: key agreement with Diffie-Hellman")
+                    key = key_agreement(connection, received_info, algorithm)
+                else:
+                    print("INFO: Received from client: " + received_info)
+                    decoded = received_info.split(',')
+                    if decoded[1] == client.message_hmac(data, algorithm, key):
+                        print("INFO: Correct message integrity.")
+                    else:
+                        print("WARN: Integrity void, message modified or treated.")
             print("INFO: Closing server.")
-            connection.close()
 
 
 def register_analysis_time():

@@ -6,6 +6,7 @@ import io
 import secrets
 import logging
 import config
+import random
 
 from exceptions import NewFileException
 
@@ -19,24 +20,49 @@ _hash_algorithm = {
     "BLAKE2B": hashlib.blake2b(digest_size=32),
     "BLAKE2S": hashlib.blake2s(digest_size=32)
 }
+buffer_size = 16384
 
 
 def message_hmac(message, algorithm, key):
     return "mock"
 
 
-def tcpip_client(server_socket, algorithm, key):
+def key_agreement(client_socket, prime, generator, algorithm):
+    print(f"INFO: establishing key agreement with Diffie-Hellman")
+    v = random.randint(1, prime-1)
+    a = pow(generator, v, prime)
+    client_socket.sendall(bytes(f'KEYAGREEMENT,{str(prime)},{str(generator)},{str(a)}', 'utf-8'))
+
+    server_msg = client_socket.recv(buffer_size)
+    received_info = str(server_msg, 'utf-8').split(',')
+    dh = pow(int(received_info[0]), v, prime)
+    mac_b = message_hmac(str(a), algorithm, str(dh))
+
+    if not mac_b == received_info[1]:
+        pass
+    else:
+        mac_a = message_hmac(received_info[0], algorithm, str(dh))
+        client_socket.sendall(bytes(f'{str(mac_a)}', 'utf-8'))
+        key_hex = format(dh, 'x')
+        print(f"INFO: the key is {key_hex}")
+        return key_hex
+
+
+def tcpip_client(server_socket, algorithm, prime, generator):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_addr = ('localhost', server_socket)
-    client_socket.connect(server_addr)
-    print("INFO: Login client up and connected to login server.")
-    message = input("Please submit the message you want to send:")
-    m_hmac = message_hmac(message, algorithm, key)
-    try:
+
+    with client_socket:
+        server_addr = ('localhost', server_socket)
+        client_socket.connect(server_addr)
+        print("INFO: Login client up and connected to login server.")
+        key = key_agreement(client_socket, prime, generator, algorithm)
+
+        message = input("Please submit the message you want to send:")
+        m_hmac = message_hmac(message, algorithm, key)
         client_socket.sendall(bytes(message+","+m_hmac, 'utf-8'))
-    finally:
-        print('INFO: Closing connection.')
-        client_socket.close()
+        client_socket.sendall(bytes('END', 'utf-8'))
+
+    print('INFO: Closing connection.')
 
 
 def generate_token():
