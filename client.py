@@ -57,12 +57,14 @@ def tcpip_client(server_socket, algorithm, prime, generator):
         print("INFO: Login client up and connected to login server.")
         key = key_agreement(client_socket, prime, generator, algorithm)
 
-        message = input("Please submit the message you want to send:")
-        m_hmac = message_hmac(message, algorithm, key)
-        client_socket.sendall(bytes(message+","+m_hmac, 'utf-8'))
-        client_socket.sendall(bytes('END', 'utf-8'))
+        while True:
+            message = input("Please submit the message you want to send:")
+            m_hmac = message_hmac(message, algorithm, key)
+            client_socket.sendall(bytes(message+","+m_hmac, 'utf-8'))
+            if message == 'END':
+                break
 
-    print('INFO: Closing connection.')
+        print('INFO: Closing connection.')
 
 
 def generate_token():
