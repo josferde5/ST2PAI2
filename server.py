@@ -30,7 +30,7 @@ def message_hmac(message, algorithm, key):
 
 def key_agreement(server_socket, received_info, algorithm):
     data = received_info.split(',')
-    w = random.randint(1, int(data[1])-1)
+    w = random.randint(1, int(data[1]) - 1)
     dh = pow(int(data[3]), w, int(data[1]))
     b = pow(int(data[2]), w, int(data[1]))
     mac_b = message_hmac(data[3], algorithm, str(dh))
@@ -64,15 +64,15 @@ def tcpip_server(s_socket, algorithm, key):
                     continue
 
                 received_info = str(data, 'utf-8')
-
-                if received_info == 'END':
+                decoded = received_info.split(',')
+                if decoded[0] == 'END':
                     break
-                elif received_info.startswith('KEYAGREEMENT'):
+                elif decoded[0] == ('KEYAGREEMENT'):
                     print(f"INFO: key agreement with Diffie-Hellman")
                     key = key_agreement(connection, received_info, algorithm)
                 else:
                     print("INFO: Received from client: " + received_info)
-                    decoded = received_info.split(',')
+
                     if decoded[1] == client.message_hmac(data, algorithm, key):
                         print("INFO: Correct message integrity.")
                     else:
