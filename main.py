@@ -1,5 +1,7 @@
+import random
 import time
 import client, reports
+import database
 import server
 import os
 import shutil
@@ -67,7 +69,6 @@ def configuration():
 
 
 if __name__ == "__main__":
-
     print("#############################################")
     print("#    _     _ _ ______  ______ ______ _ _    #")
     print("#   (_)   (_) (______)/ _____) _____) | |   #")
@@ -78,6 +79,12 @@ if __name__ == "__main__":
     print("#                                           #")
     print("#############################################")
 
-    p = Process(target=server.tcpip_server, args=(7070, "test", "test"))
-    p.start()
-    client.tcpip_client(7070, "test", 23636500034428764479244706838976857737400240931731689727911481883833885852046528112333064782260329768244802925929644443038425621307027595611695201155498156223753452615667663501337720399386057832133951, 2)
+    # p = Process(target=server.tcpip_server, args=(7070, "test", "test"))
+    # p.start()
+    # client.tcpip_client(7070, "test", 23636500034428764479244706838976857737400240931731689727911481883833885852046528112333064782260329768244802925929644443038425621307027595611695201155498156223753452615667663501337720399386057832133951, 2)
+
+    database.init_database()
+    testnonce = [random.randint(1, 100000)] #El nonce se le debe pasar como una lista o una tupla, no directamente
+    database.insert_nonce(testnonce)
+    print(database.exists_nonce(testnonce))
+    print(database.exists_nonce(['NOTEXISTS']))
