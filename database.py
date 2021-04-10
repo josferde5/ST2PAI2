@@ -24,7 +24,7 @@ def insert_nonce(nonce):
     try:
         connection = connect_database()
         connection.cursor().execute(
-            'INSERT INTO nonces(nonce) VALUES(?)', nonce)
+            'INSERT INTO nonces(nonce) VALUES(?)', [nonce])
         connection.commit()
         print("INFO: Nonce inserted in database.")
     finally:
@@ -36,7 +36,7 @@ def exists_nonce(nonce):
         connection = connect_database()
         cursor = connection.cursor()
         cursor.execute(
-            'SELECT COUNT(*) FROM nonces WHERE nonce = ?', nonce)
+            'SELECT COUNT(*) FROM nonces WHERE nonce = ?', [nonce])
         count = cursor.fetchone()[0]
         if count == 0:
             return False
