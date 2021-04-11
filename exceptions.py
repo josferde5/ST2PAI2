@@ -4,7 +4,7 @@ class ApplicationError(Exception):
         self.message = message
 
 
-class NewFileException(Exception):
+class DiffieHellmanError(Exception):
 
     def __init__(self, message):
         self.message = message

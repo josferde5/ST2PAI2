@@ -1,3 +1,4 @@
+import errno
 import socket
 
 import server
@@ -8,7 +9,7 @@ import logging
 import config
 import random
 
-from exceptions import NewFileException
+from exceptions import DiffieHellmanError
 
 logger = logging.getLogger(__name__)
 _hash_algorithm = {
@@ -39,7 +40,7 @@ def key_agreement(client_socket, prime, generator, algorithm):
     mac_b = message_hmac(str(a), algorithm, str(dh))
 
     if not mac_b == received_info[1]:
-        pass
+        raise DiffieHellmanError('The MAC received does not match with the one obtained in the client')
     else:
         mac_a = message_hmac(received_info[0], algorithm, str(dh))
         client_socket.sendall(bytes(f'{str(mac_a)}', 'utf-8'))
@@ -55,14 +56,24 @@ def tcpip_client(server_socket, algorithm, prime, generator):
         server_addr = ('localhost', server_socket)
         client_socket.connect(server_addr)
         print("INFO: Login client up and connected to login server.")
-        key = key_agreement(client_socket, prime, generator, algorithm)
+        try:
+            key = key_agreement(client_socket, prime, generator, algorithm)
 
-        while True:
-            message = input("Please submit the message you want to send:")
-            m_hmac = message_hmac(message, algorithm, key)
-            client_socket.sendall(bytes(message+","+m_hmac, 'utf-8'))
-            if message == 'END':
-                break
+            while True:
+                try:
+                    message = input("Please submit the message you want to send:")
+                    m_hmac = message_hmac(message, algorithm, key)
+                    client_socket.sendall(bytes(message+","+m_hmac, 'utf-8'))
+                    if message == 'END':
+                        break
+                except socket.error as e:
+                    if e.errno == errno.ECONNABORTED:
+                        print("INFO: Connection aborted by the server. Maybe a problem with Diffie-Hellman key agreement?")
+                        break
+                    else:
+                        raise e
+        except DiffieHellmanError:
+            print("INFO: the MAC received does not match with the one obtained in the client. Aborting connection.")
 
         print('INFO: Closing connection.')
 
@@ -128,7 +139,7 @@ def check_file_integrity(filepath):
             failed_reason = 'mac'
         elif not verification_hash:
             failed_reason = 'hash'
-    except NewFileException:
+    except DiffieHellmanError:
         logger.info("The file %s was not registered in the server. It has been added successfully.", filepath)
         file_hash_server = None
         verification_hash = None

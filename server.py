@@ -3,8 +3,9 @@ import hmac
 import os
 import socket
 import random
+import errno
 
-from exceptions import NewFileException
+from exceptions import DiffieHellmanError
 from datetime import datetime as dt
 import client
 import logging
@@ -36,12 +37,18 @@ def key_agreement(server_socket, received_info, algorithm):
     mac_b = message_hmac(data[3], algorithm, str(dh))
     server_socket.sendall(bytes(f'{str(b)},{str(mac_b)}', 'utf-8'))
 
-    data = server_socket.recv(buffer_size)
-    received_info = str(data, 'utf-8')
+    try:
+        data = server_socket.recv(buffer_size)
+        received_info = str(data, 'utf-8')
+    except socket.error as e:
+        if e.errno == errno.ECONNABORTED:
+            print("INFO: Connection aborted by the client. Maybe a problem with Diffie-Hellman key agreement?")
+            return None
 
     mac_a = message_hmac(received_info, algorithm, str(dh))
     if not mac_a == received_info:
-        pass
+        print("INFO: the MAC received does not match with the one obtained in the server. Aborting connection.")
+        raise DiffieHellmanError('The MAC received does not match with the one obtained in the server')
     else:
         key_hex = format(dh, 'x')
         print(f"INFO: the key is {key_hex}")
@@ -69,7 +76,12 @@ def tcpip_server(s_socket, algorithm, key):
                     break
                 elif decoded[0] == ('KEYAGREEMENT'):
                     print(f"INFO: key agreement with Diffie-Hellman")
-                    key = key_agreement(connection, received_info, algorithm)
+                    try:
+                        key = key_agreement(connection, received_info, algorithm)
+                        if not key:
+                            break
+                    except DiffieHellmanError:
+                        break
                 else:
                     print("INFO: Received from client: " + received_info)
 
