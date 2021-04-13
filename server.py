@@ -4,7 +4,7 @@ import secrets
 import socket
 import random
 import errno
-
+import client
 import database
 from exceptions import DiffieHellmanError
 import logging
@@ -182,4 +182,4 @@ def update_logs(message, hmac, nonce, key, fail):
         worksheet.write(3, 6, fail, data_format)
 
         workbook.close()
-    print('Logs were updated')
+    print('SERVER INFO: Logs were updated')

@@ -48,26 +48,30 @@ def tcpip_client(server_socket, prime, generator):
             key = key_agreement(client_socket, prime, generator)
 
             while True:
-                data = connection.recv(buffer_size)
-                if not data:
-                    continue
+                try:
+                    message = input("Please submit the message you want to send:")
+                    nonce = server.generate_nonce()
+                    m_hmac = server.message_hmac(message, key, nonce)
+                    client_socket.sendall(bytes(message + "," + m_hmac + "," + nonce, 'utf-8'))
+                    if message == 'END':
+                        break
+                    else:
+                        while True:
+                            data = client_socket.recv(buffer_size)
+                            if not data:
+                                continue
+                            else:
+                                print('CLIENT INFO: ' + str(data, 'utf-8'))
+                                ctypes.windll.user32.MessageBoxW(0, str(data, 'utf-8'), 'Integrity in transmission', 0)
+                                break
+                except socket.error as e:
+                    if e.errno == errno.ECONNABORTED:
+                        print(
+                            "CLIENT INFO: Connection aborted by the server. Maybe a problem with Diffie-Hellman key agreement?")
+                        break
+                    else:
+                        raise e
 
-                    try:
-                        message = input("Please submit the message you want to send:")
-                        nonce = server.generate_nonce()
-                        m_hmac = server.message_hmac(message, key, nonce)
-                        client_socket.sendall(bytes(message + "," + m_hmac + "," + nonce, 'utf-8'))
-                        if message == 'END':
-                            break
-                    except socket.error as e:
-                        if e.errno == errno.ECONNABORTED:
-                            print(
-                                "CLIENT INFO: Connection aborted by the server. Maybe a problem with Diffie-Hellman key agreement?")
-                            break
-                        else:
-                            raise e
-                else:
-                    ctypes.windll.user32.MessageBoxW(0, 'Result of the integrity verify', str(data, 'utf-8'), 1)
         except DiffieHellmanError:
             print("CLIENT INFO: the MAC received does not match with the one obtained in the client. Aborting connection.")
 
