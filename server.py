@@ -1,47 +1,16 @@
-import hashlib
-import hmac
-import secrets
+import utils
 import socket
 import random
 import errno
-import client
+
 import database
 from exceptions import DiffieHellmanError
 import logging
-import config
+import reports
 
 logger = logging.getLogger(__name__)
-_hash_algorithm = {
-    "SHA1": hashlib.sha1,
-    "SHA256": hashlib.sha256,
-    "SHA512": hashlib.sha512,
-    "SHA3_256": hashlib.sha3_256,
-    "SHA3_512": hashlib.sha3_512,
-    "BLAKE2B": hashlib.blake2b,
-    "BLAKE2S": hashlib.blake2s
-}
+
 buffer_size = 16384
-
-
-def generate_nonce():
-    return secrets.token_hex(64)
-
-
-def challenge(key, nonce):
-    key_int = int(key, base=16)
-    nonce_int = int(nonce, base=16)
-    if nonce_int > key_int:
-        return nonce_int % key_int
-    else:
-        return key_int % nonce_int
-
-
-def message_hmac(message, key, nonce):
-    c = config.Config()
-    msg_bytes = bytes(message, encoding='UTF-8')
-    challenge_bytes = challenge(key, nonce).to_bytes(200, byteorder="big")
-    digester = hmac.new(challenge_bytes, msg_bytes, _hash_algorithm.get(c.hashing_algorithm, hashlib.blake2s))
-    return digester.hexdigest()
 
 
 def key_agreement(server_socket, received_info):
@@ -49,8 +18,8 @@ def key_agreement(server_socket, received_info):
     w = random.randint(1, int(data[1]) - 1)
     dh = pow(int(data[3]), w, int(data[1]))
     b = pow(int(data[2]), w, int(data[1]))
-    nonce = generate_nonce()
-    mac_b = message_hmac(data[3], str(dh), nonce)
+    nonce = utils.generate_nonce()
+    mac_b = utils.message_hmac(data[3], str(dh), nonce)
     server_socket.sendall(bytes(f'{str(b)},{str(mac_b)},{nonce}', 'utf-8'))
 
     try:
@@ -61,7 +30,7 @@ def key_agreement(server_socket, received_info):
             print("SERVER INFO: Connection aborted by the client. Maybe a problem with Diffie-Hellman key agreement?")
             return None
 
-    mac_a = message_hmac(str(b), str(dh), received_info[1])
+    mac_a = utils.message_hmac(str(b), str(dh), received_info[1])
     if not mac_a == received_info[0] or database.exists_nonce(received_info[1]):
         print(
             "SERVER INFO: the MAC received does not match with the one obtained in the server or NONCE wasn't unique. Aborting connection.")
@@ -103,83 +72,20 @@ def tcpip_server(s_socket):
                         break
                 else:
                     print("SERVER INFO: Received from client: " + received_info)
-                    if decoded[1] == message_hmac(decoded[0], key, decoded[2]) and not database.exists_nonce(
+                    if decoded[1] == utils.message_hmac(decoded[0], key, decoded[2]) and not database.exists_nonce(
                             decoded[2]):
                         database.insert_nonce(decoded[2])
                         result = 'Correct message integrity.'
-                        print('SERVER INFO: ' +  result)
-                    elif decoded[1] == message_hmac(decoded[0], key, decoded[2]) and database.exists_nonce(
+                        print('SERVER INFO: ' + result)
+                    elif decoded[1] == utils.message_hmac(decoded[0], key, decoded[2]) and database.exists_nonce(
                             decoded[2]):
-                        update_logs(decoded[0], decoded[1], nonce[2], key, 'Duplicate nonce')
+                        reports.update_logs(decoded[0], decoded[1], decoded[2], key, 'Duplicate nonce')
                         result = 'A reply attack has been detected.'
                         print('SERVER WARN: ' + result)
-                    elif decoded[1] != message_hmac(decoded[0], key, decoded[2]) and not database.exists_nonce(
-                            decoded[2]):
-                        update_logs(decoded[0], decoded[1], nonce[2], key, 'Modified message content')
+                    elif decoded[1] != utils.message_hmac(decoded[0], key, decoded[2]):
+                        reports.update_logs(decoded[0], decoded[1], decoded[2], key, 'Modified message content')
                         result = 'Integrity void, message modified or treated.'
-                        print('SERVER WARN: ' + result)   
+                        print('SERVER WARN: ' + result)
 
-                    connection.send(bytes(result, 'utf-8')) 
+                    connection.send(bytes(result, 'utf-8'))
             print("SERVER INFO: Closing server.")
-
-
-def update_logs(message, hmac, nonce, key, fail):
-    dirname = os.path.dirname(__file__)
-    filename = 'logs.xlsx'
-    pathname = os.path.join(dirname, filename)
-
-    if os.path.exists(pathname):
-        workbook = openpyxl.load_workbook(filename)
-        worksheet = workbook['Logs']
-        thin_border = Border(left=Side(style='thin'), 
-                     right=Side(style='thin'), 
-                     top=Side(style='thin'), 
-                     bottom=Side(style='thin'))
-        max_row = worksheet.max_row
-
-        worksheet.cell(row=max_row+1, column=2).value = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        worksheet.cell(row=max_row+1, column=2).border = thin_border
-        worksheet.cell(row=max_row+1, column=3).value = message
-        worksheet.cell(row=max_row+1, column=3).border = thin_border
-        worksheet.cell(row=max_row+1, column=4).value = hmac
-        worksheet.cell(row=max_row+1, column=4).border = thin_border
-        worksheet.cell(row=max_row+1, column=5).value = nonce
-        worksheet.cell(row=max_row+1, column=5).border = thin_border
-        worksheet.cell(row=max_row+1, column=6).value = key
-        worksheet.cell(row=max_row+1, column=6).border = thin_border
-        worksheet.cell(row=max_row+1, column=7).value = fail
-        worksheet.cell(row=max_row+1, column=7).border = thin_border
-
-        workbook.save(filename)
-
-    else:
-        workbook = xlsxwriter.Workbook(pathname)
-        worksheet = workbook.add_worksheet('Logs')
-
-        title_format = workbook.add_format({'bold': 1, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#000000'})
-        column_title_format = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#000000'})
-        data_format = workbook.add_format({'valign': 'vcenter', 'border': 1, 'border_color': '#000000'})
-
-        worksheet.set_column(1, 6, 24)
-
-        worksheet.merge_range("B2:G2", 'Transmission integrity logs', title_format)
-        worksheet.write(2, 1, 'Datetime', column_title_format)
-        worksheet.write(3, 1, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), data_format)
-
-        worksheet.write(2, 2, 'Message', column_title_format)
-        worksheet.write(3, 2, message, data_format)
-
-        worksheet.write(2, 3, 'HMAC', column_title_format)
-        worksheet.write(3, 3, hmac, data_format)
-
-        worksheet.write(2, 4, 'Nonce', column_title_format)
-        worksheet.write(3, 4, nonce, data_format)
-
-        worksheet.write(2, 5, 'Key', column_title_format)
-        worksheet.write(3, 5, key, data_format)
-
-        worksheet.write(2, 6, 'Integrity fail', column_title_format)
-        worksheet.write(3, 6, fail, data_format)
-
-        workbook.close()
-    print('SERVER INFO: Logs were updated')

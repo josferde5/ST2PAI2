@@ -34,6 +34,8 @@ if __name__ == "__main__":
 
     configuration()
     c = config.Config()
-    p = Process(target=server.tcpip_server, args=(c.port,))
-    p.start()
-    client.tcpip_client(c.port)
+    p1 = Process(target=adversary.tcp_ip_adversary, args=(c.port + 1, c.port))
+    p2 = Process(target=server.tcpip_server, args=(c.port,))
+    p1.start()
+    p2.start()
+    client.tcpip_client(c.port + 1)
