@@ -102,28 +102,14 @@ def tcpip_server(s_socket):
                     except DiffieHellmanError:
                         break
                 else:
-                    print("SERVER INFO: Received from client: " + received_info)
-                    if decoded[1] == message_hmac(decoded[0], key, decoded[2]) and not database.exists_nonce(
-                            decoded[2]):
-                        database.insert_nonce(decoded[2])
-                        result = 'Correct message integrity.'
-                        print('SERVER INFO: ' +  result)
-                    elif decoded[1] == message_hmac(decoded[0], key, decoded[2]) and database.exists_nonce(
-                            decoded[2]):
-                        update_logs(decoded[0], decoded[1], nonce[2], key, 'Duplicate nonce')
-                        result = 'A reply attack has been detected.'
-                        print('SERVER WARN: ' + result)
-                    elif decoded[1] != message_hmac(decoded[0], key, decoded[2]) and not database.exists_nonce(
-                            decoded[2]):
-                        update_logs(decoded[0], decoded[1], nonce[2], key, 'Modified message content')
-                        result = 'Integrity void, message modified or treated.'
-                        print('SERVER WARN: ' + result)   
-
+                    print("SERVER INFO: Received from client the following message: " + decoded[0])
+                    result = verify_integrity(decoded[0], decoded[1], key, decoded[2], 'CLIENT', 'SERVER')   
                     connection.send(bytes(result, 'utf-8')) 
+
             print("SERVER INFO: Closing server.")
 
 
-def update_logs(message, hmac, nonce, key, fail):
+def update_logs(message, hmac_emisor, nonce, key, fail, emisor):
     dirname = os.path.dirname(__file__)
     filename = 'logs.xlsx'
     pathname = os.path.join(dirname, filename)
@@ -141,7 +127,7 @@ def update_logs(message, hmac, nonce, key, fail):
         worksheet.cell(row=max_row+1, column=2).border = thin_border
         worksheet.cell(row=max_row+1, column=3).value = message
         worksheet.cell(row=max_row+1, column=3).border = thin_border
-        worksheet.cell(row=max_row+1, column=4).value = hmac
+        worksheet.cell(row=max_row+1, column=4).value = hmac_emisor
         worksheet.cell(row=max_row+1, column=4).border = thin_border
         worksheet.cell(row=max_row+1, column=5).value = nonce
         worksheet.cell(row=max_row+1, column=5).border = thin_border
@@ -149,6 +135,8 @@ def update_logs(message, hmac, nonce, key, fail):
         worksheet.cell(row=max_row+1, column=6).border = thin_border
         worksheet.cell(row=max_row+1, column=7).value = fail
         worksheet.cell(row=max_row+1, column=7).border = thin_border
+        worksheet.cell(row=max_row+1, column=8).value = emisor
+        worksheet.cell(row=max_row+1, column=8).border = thin_border
 
         workbook.save(filename)
 
@@ -160,7 +148,7 @@ def update_logs(message, hmac, nonce, key, fail):
         column_title_format = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#000000'})
         data_format = workbook.add_format({'valign': 'vcenter', 'border': 1, 'border_color': '#000000'})
 
-        worksheet.set_column(1, 6, 24)
+        worksheet.set_column(1, 7, 24)
 
         worksheet.merge_range("B2:G2", 'Transmission integrity logs', title_format)
         worksheet.write(2, 1, 'Datetime', column_title_format)
@@ -181,5 +169,28 @@ def update_logs(message, hmac, nonce, key, fail):
         worksheet.write(2, 6, 'Integrity fail', column_title_format)
         worksheet.write(3, 6, fail, data_format)
 
+        worksheet.write(2, 7, 'Emisor', column_title_format)
+        worksheet.write(3, 7, emisor, data_format)
+
         workbook.close()
+        
     print('SERVER INFO: Logs were updated')
+
+
+def verify_integrity(message, hmac_emisor, key, nonce, emisor, receiver):
+    if hmac_emisor == message_hmac(message, key, nonce) and not database.exists_nonce(nonce):
+        database.insert_nonce(nonce)
+        result = 'The integrity of the message transmission has been verified correctly.'
+        print(receiver + ' INFO: ' +  result)
+
+    elif hmac_emisor == message_hmac(message, key, nonce) and database.exists_nonce(nonce):
+        update_logs(message, hmac_emisor, nonce, key, 'Duplicate nonce', emisor)
+        result = 'A reply attack has been detected. The nonce used is duplicated.'
+        print(receiver + ' WARN: ' +  result)
+
+    else: 
+        update_logs(message, hmac_emisor, nonce, key, 'Modified message content', emisor)
+        result = 'A MiDM attack has been detected. Integrity void, message modified or treated.'
+        print(receiver + ' WARN: ' +  result)
+    
+    return result
