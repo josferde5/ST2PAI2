@@ -1,47 +1,16 @@
-import hashlib
-import hmac
-import secrets
+import utils
 import socket
 import random
 import errno
-import client
+
 import database
 from exceptions import DiffieHellmanError
 import logging
-import config
+import reports
 
 logger = logging.getLogger(__name__)
-_hash_algorithm = {
-    "SHA1": hashlib.sha1,
-    "SHA256": hashlib.sha256,
-    "SHA512": hashlib.sha512,
-    "SHA3_256": hashlib.sha3_256,
-    "SHA3_512": hashlib.sha3_512,
-    "BLAKE2B": hashlib.blake2b,
-    "BLAKE2S": hashlib.blake2s
-}
+
 buffer_size = 16384
-
-
-def generate_nonce():
-    return secrets.token_hex(64)
-
-
-def challenge(key, nonce):
-    key_int = int(key, base=16)
-    nonce_int = int(nonce, base=16)
-    if nonce_int > key_int:
-        return nonce_int % key_int
-    else:
-        return key_int % nonce_int
-
-
-def message_hmac(message, key, nonce):
-    c = config.Config()
-    msg_bytes = bytes(message, encoding='UTF-8')
-    challenge_bytes = challenge(key, nonce).to_bytes(200, byteorder="big")
-    digester = hmac.new(challenge_bytes, msg_bytes, _hash_algorithm.get(c.hashing_algorithm, hashlib.blake2s))
-    return digester.hexdigest()
 
 
 def key_agreement(server_socket, received_info):
@@ -49,8 +18,8 @@ def key_agreement(server_socket, received_info):
     w = random.randint(1, int(data[1]) - 1)
     dh = pow(int(data[3]), w, int(data[1]))
     b = pow(int(data[2]), w, int(data[1]))
-    nonce = generate_nonce()
-    mac_b = message_hmac(data[3], str(dh), nonce)
+    nonce = utils.generate_nonce()
+    mac_b = utils.message_hmac(data[3], str(dh), nonce)
     server_socket.sendall(bytes(f'{str(b)},{str(mac_b)},{nonce}', 'utf-8'))
 
     try:
@@ -61,7 +30,7 @@ def key_agreement(server_socket, received_info):
             print("SERVER INFO: Connection aborted by the client. Maybe a problem with Diffie-Hellman key agreement?")
             return None
 
-    mac_a = message_hmac(str(b), str(dh), received_info[1])
+    mac_a = utils.message_hmac(str(b), str(dh), received_info[1])
     if not mac_a == received_info[0] or database.exists_nonce(received_info[1]):
         print(
             "SERVER INFO: the MAC received does not match with the one obtained in the server or NONCE wasn't unique. Aborting connection.")
@@ -102,6 +71,7 @@ def tcpip_server(s_socket):
                     except DiffieHellmanError:
                         break
                 else:
+<<<<<<< HEAD
                     print("SERVER INFO: Received from client the following message: " + decoded[0])
                     result = verify_integrity(decoded[0], decoded[1], key, decoded[2], 'CLIENT', 'SERVER')   
                     connection.send(bytes(result, 'utf-8')) 
@@ -194,3 +164,23 @@ def verify_integrity(message, hmac_emisor, key, nonce, emisor, receiver):
         print(receiver + ' WARN: ' +  result)
     
     return result
+=======
+                    print("SERVER INFO: Received from client: " + received_info)
+                    if decoded[1] == utils.message_hmac(decoded[0], key, decoded[2]) and not database.exists_nonce(
+                            decoded[2]):
+                        database.insert_nonce(decoded[2])
+                        result = 'Correct message integrity.'
+                        print('SERVER INFO: ' + result)
+                    elif decoded[1] == utils.message_hmac(decoded[0], key, decoded[2]) and database.exists_nonce(
+                            decoded[2]):
+                        reports.update_logs(decoded[0], decoded[1], decoded[2], key, 'Duplicate nonce')
+                        result = 'A reply attack has been detected.'
+                        print('SERVER WARN: ' + result)
+                    elif decoded[1] != utils.message_hmac(decoded[0], key, decoded[2]):
+                        reports.update_logs(decoded[0], decoded[1], decoded[2], key, 'Modified message content')
+                        result = 'Integrity void, message modified or treated.'
+                        print('SERVER WARN: ' + result)
+
+                    connection.send(bytes(result, 'utf-8'))
+            print("SERVER INFO: Closing server.")
+>>>>>>> b9f5e32988ffbb32473a339ca17fbd20a6e481de
